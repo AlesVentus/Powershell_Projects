@@ -1,29 +1,44 @@
 ﻿#
-#(Get-Credential).Password | ConvertFrom-SecureString | Out-File C:\Users\jventua1\Desktop\PS\1_DiskReport\pass.txt
+#(Get-Credential).Password | ConvertFrom-SecureString | Out-File C:\Coding\Powershell\Powershell_Projects\01_DiskReport\pass.txt
 #
 
+$servers = @('WINDC', 'WinOFF')
 
-<# Must run under the CISCO #>
-try
-{
-    $pass = get-Content 'C:\Users\jventua1\Desktop\PS\1_DiskReport\passX.txt'  -ErrorAction -stop| ConvertTo-SecureString
+try{
+
+    $pass = get-Content 'C:\Coding\Powershell\Powershell_Projects\01_DiskReport\pass.txt'  | ConvertTo-SecureString
 }
 
-catch
-{
+
+catch{
+
     Write-Host -f DarkRed "Cannot get the password"
 }
+
 trap {"Error found."}
 
-$user = 'jventua1sa2'
+$user = 'Administrator'
 $credential = New-Object System.Management.Automation.PSCredential($user, $pass)
-$report = 'C:\Users\jventua1\Desktop\PS\1_DiskReport\report_disk_space.html'  
-
-#$data = Get-WmiObject -class win32_logicaldisk  -ComputerName M5257150  | Select-Object PSComputerName, @{'Name'='DriveName';'Expression'={$_.deviceID}}, @{'Name'='Free_Space_Perc';'Expression'={[math]::Round($_.freespace/$_.size*100)}} 
+$report = 'C:\Coding\Powershell\Powershell_Projects\01_DiskReport\report_disk_space.html'  
 
 
-$data = Get-WmiObject -class win32_logicaldisk –credential $credential  -ComputerName C051M436,c051ma91 |  Where-Object {$_.drivetype -eq 3} | Select-Object PSComputerName, DeviceID, @{'Name'='Free_Space_Perc';'Expression'={[math]::Round($_.FreeSpace /1GB)}} 
+$data = @()
 
+foreach ($server in $servers){
+
+    if (!(Test-Connection -ComputerName $server -Count 1 -Quiet)){ 
+    
+        $data += [PSCustomObject]@{PSComputerName = $server
+                                   DeviceID = "Not Available" 
+                                   Free_Space_Perc = 0
+                                   status = "Offline"
+                                  }
+    }
+    else{
+    
+        $data += Get-WmiObject -class win32_logicaldisk –credential $credential  -ComputerName $server |  Where-Object {$_.drivetype -eq 3} | Select-Object PSComputerName, DeviceID, @{'Name'='Free_Space_Perc';'Expression'={[math]::Round($_.FreeSpace /1GB)}}, @{'Name'='status';'Expression'={'Online'}} 
+    }
+}
 
 $html = @"
 <html>
@@ -42,15 +57,16 @@ $html = @"
 </style>
 
 <head>
-<h1>This is disk report</h1>
+<h1>Servers disk capacity</h1>
 </head>
 <body>
-<h3>this is content</h3>
+<h3>Available disk space in listed servers</h3>
 <table id = 'report'>
 <tr>
     <th>Server</th>
     <th>Drive Name</th>
-    <th>Free Space</th>    
+    <th>Free Space</th>
+    <th>Status</th>    
 </tr>
 "@
 
@@ -61,30 +77,66 @@ foreach ($disk in $data)
     $server = $disk.pscomputername
     $device = $disk.DeviceID
     $freespace = $disk.Free_Space_Perc
+    $status = $disk.status
     
-    if ($disk.Free_Space_Perc -le 10)
-        {
-        $html += "<tr style='mso-border-alt:solid'>
-                <td>$server</td>
-                <td style=`'background:red`'>$device</td>
-                <td>$freespace</td>
-                </tr>"
-        }
-        else
-        {
-        $html += "<tr style='mso-border-alt:solid'>
-                <td>$server</td>
-                <td style=`'background:green`'>$device</td>
-                <td>$freespace</td>
-                </tr>"   
-        }
 
+    if ($disk.status -eq 'Offline'){
+
+    
+         if ($disk.Free_Space_Perc -le 10){
+
+                $html += "<tr style='mso-border-alt:solid'>
+                        <td>$server</td>
+                        <td style=`'background:red`'>$device</td>
+                        <td>$freespace</td>
+                        <td style=`'background:red`'>$status</td>
+                        </tr>"
+         }
+         else{
+
+            $html += "<tr style='mso-border-alt:solid'>
+                    <td>$server</td>
+                    <td style=`'background:green`'>$device</td>
+                    <td>$freespace</td>
+                    <td>$status</td>
+                    </tr>"   
+         }
+    }
+
+    else{
+
+        if ($disk.Free_Space_Perc -le 10){
+
+            $html += "<tr style='mso-border-alt:solid'>
+                    <td>$server</td>
+                    <td style=`'background:red`'>$device</td>
+                    <td>$freespace</td>
+                    <td>$status</td>
+                    </tr>"
+        }
+        else{
+
+            $html += "<tr style='mso-border-alt:solid'>
+                    <td>$server</td>
+                    <td style=`'background:green`'>$device</td>
+                    <td>$freespace</td>
+                    <td>$status</td>
+                    </tr>"   
+        }
+    }
 }
 
 $html +="</table>
         </body>
         </html>"
 
-Send-MailMessage -from 'hello_kitty@gmail.com' -to 'ales.ventus@jci.com' -Subject 'this is test' -SmtpServer smtp.jci.com -Port 25 -body $html -BodyAsHtml
 
 
+$mail_pass = Get-Content "gmail_pass.txt" | ConvertTo-SecureString
+$user = "alesventus@gmail.com"
+$From = "hello_kitty@gmail.com"
+$To = "alesventus@gmail.com"
+$Subject = "hello_kitty@gmail.com tester"
+$Password = $mail_pass
+$Credential = New-Object -TypeName System.Management.Automation.PSCredential -ArgumentList $user, $Password
+Send-MailMessage -From "hello_kitty@gmail.com" -To $To -Subject $Subject -body $html -BodyAsHtml -SmtpServer "smtp.gmail.com" -port 587 -UseSsl -Credential $Credential

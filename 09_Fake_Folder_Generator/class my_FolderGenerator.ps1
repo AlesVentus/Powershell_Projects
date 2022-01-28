@@ -1,5 +1,7 @@
+$DesktopPath = [Environment]::GetFolderPath("Desktop")
+
 class FolderGenerator{
-    hidden[System.IO.DirectoryInfo]$DefaultPath = "C:\Users\jventua1\Desktop\tester\"
+    hidden[System.IO.DirectoryInfo]$DefaultPath = "$DesktopPath\tester\"
     [string]$RootName = "WoWw"
     [int]$NumberOfFiles = 1
     [byte[]]$ByteHash = 0
